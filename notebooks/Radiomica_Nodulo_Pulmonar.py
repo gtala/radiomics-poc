@@ -38,10 +38,23 @@
 import os
 from pathlib import Path
 
+
+def _find_project_root() -> Path:
+    if env := os.environ.get("RADIOMICA_PROJECT_ROOT"):
+        return Path(env).expanduser().resolve()
+    cwd = Path.cwd().resolve()
+    for base in (cwd, *cwd.parents):
+        if (base / "data").is_dir() and (base / "requirements.txt").exists():
+            return base
+    return cwd
+
+
 # Datos locales: colocar archivos en ./data/ (ver README.md).
-PROJECT_ROOT = Path.cwd()
-DATA_DIR = Path(os.environ.get("RADIOMICA_DATA_DIR", PROJECT_ROOT / "data"))
-DATA_DIR = DATA_DIR.expanduser().resolve()
+PROJECT_ROOT = _find_project_root()
+DATA_DIR = Path(
+    os.environ.get("RADIOMICA_DATA_DIR", PROJECT_ROOT / "data")
+).expanduser().resolve()
+print(f"Raíz del proyecto: {PROJECT_ROOT}")
 print(f"Directorio de datos: {DATA_DIR}")
 
 
@@ -262,13 +275,13 @@ nodulo_umbralUH[nodulo_umbralUH>40]=0
 # %% colab={"base_uri": "https://localhost:8080/"} executionInfo={"elapsed": 9, "status": "ok", "timestamp": 1788461863309, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="qc2tbBV4AmJY" outputId="5736fbb9-ef86-4bda-aa19-894081b5ae81"
 nodulo_umbralUH
 
-# %% id="pBcXinruelvD" executionInfo={"status": "ok", "timestamp": 1788461863312, "user_tz": 180, "elapsed": 2, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 2, "status": "ok", "timestamp": 1788461863312, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="pBcXinruelvD"
 img_3c = np.zeros((512,512,3),dtype=np.uint8)
 
 # %% colab={"base_uri": "https://localhost:8080/"} executionInfo={"elapsed": 13, "status": "ok", "timestamp": 1788461863326, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="tkMta9dVewaR" outputId="b304f87f-c85a-4b14-e58a-3e94d13a8a3d"
 img_3c.shape
 
-# %% id="zAAyTu48fPuf" executionInfo={"status": "ok", "timestamp": 1788461863334, "user_tz": 180, "elapsed": 7, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 7, "status": "ok", "timestamp": 1788461863334, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="zAAyTu48fPuf"
 img_3c = np.zeros((512,512,3),dtype=np.uint8)
 img_3c[:,:,0] = grayscale_image_uint8
 img_3c[:,:,1] = grayscale_image_uint8
@@ -287,44 +300,44 @@ img_3c
 # %% [markdown] id="s1Z72zZ2s0uB"
 # segmentar con un cuadrado o box el nódulo y extraer solo los pixeles del nodulo a partir del umbral.-
 
-# %% id="xDFqG2OSgEXn" executionInfo={"status": "ok", "timestamp": 1788461863505, "user_tz": 180, "elapsed": 3, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 3, "status": "ok", "timestamp": 1788461863505, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="xDFqG2OSgEXn"
 img_3c[200:300,200:300,1] = grayscale_image_uint8[200:300,200:300]
 
 # %% colab={"base_uri": "https://localhost:8080/", "height": 552} executionInfo={"elapsed": 69, "status": "ok", "timestamp": 1788461863573, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="YZRE_9z0gIAf" outputId="dc402168-8f1a-4418-ae81-c9701191a5b0"
 img_3c
 
-# %% id="H7wd9k9FgUm2" executionInfo={"status": "ok", "timestamp": 1788461863574, "user_tz": 180, "elapsed": 5, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 5, "status": "ok", "timestamp": 1788461863574, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="H7wd9k9FgUm2"
 img_3c[200:300,200:300,2] = grayscale_image_uint8[200:300,200:300]
 
-# %% id="978XJwMUlbWT" executionInfo={"status": "ok", "timestamp": 1788461863576, "user_tz": 180, "elapsed": 5, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 5, "status": "ok", "timestamp": 1788461863576, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="978XJwMUlbWT"
 img_3c[200:300,200:300,1] = 0
 img_3c[200:300,200:300,0] = 0
 
-# %% id="HXfPYc12pmXb" executionInfo={"status": "ok", "timestamp": 1788461863580, "user_tz": 180, "elapsed": 3, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 3, "status": "ok", "timestamp": 1788461863580, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="HXfPYc12pmXb"
 img_3c = np.zeros((512,512,3),dtype=np.uint8)
 img_3c[:,:,0] = grayscale_image_uint8
 img_3c[:,:,1] = grayscale_image_uint8
 img_3c[:,:,2] = grayscale_image_uint8
 
-# %% id="gJXt7MOPoSMi" executionInfo={"status": "ok", "timestamp": 1788461863606, "user_tz": 180, "elapsed": 25, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 25, "status": "ok", "timestamp": 1788461863606, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="gJXt7MOPoSMi"
 array_seg = sitk.GetArrayFromImage(segmentation)
 
-# %% colab={"base_uri": "https://localhost:8080/"} id="QQrAXiDUqS1Z" executionInfo={"status": "ok", "timestamp": 1788461863620, "user_tz": 180, "elapsed": 12, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}} outputId="341c7127-4a86-482e-ce2c-6d1fb9487577"
+# %% colab={"base_uri": "https://localhost:8080/"} executionInfo={"elapsed": 12, "status": "ok", "timestamp": 1788461863620, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="QQrAXiDUqS1Z" outputId="341c7127-4a86-482e-ce2c-6d1fb9487577"
 array_seg.shape
 
-# %% id="QZDDm3qcpHCd" executionInfo={"status": "ok", "timestamp": 1788461863621, "user_tz": 180, "elapsed": 5, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 5, "status": "ok", "timestamp": 1788461863621, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="QZDDm3qcpHCd"
 corte_nodulo = array_seg[237,:,:]
 
-# %% id="9EBu340Lq1gn" executionInfo={"status": "ok", "timestamp": 1788461863623, "user_tz": 180, "elapsed": 5, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 5, "status": "ok", "timestamp": 1788461863623, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="9EBu340Lq1gn"
 corte_nodulo = corte_nodulo*255
 
-# %% id="WiMmfN7LoroI" executionInfo={"status": "ok", "timestamp": 1788461863623, "user_tz": 180, "elapsed": 4, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 4, "status": "ok", "timestamp": 1788461863623, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="WiMmfN7LoroI"
 img_3c[:,:,2] = corte_nodulo
 
 # %% colab={"base_uri": "https://localhost:8080/", "height": 552} executionInfo={"elapsed": 121, "status": "ok", "timestamp": 1788461863742, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="miR8j7VTgZCd" outputId="37d3c5a7-bccd-45dc-8aac-ff3099b03d61"
 np.flipud(img_3c)
 
-# %% id="QQ0BYLirgQLZ" executionInfo={"status": "error", "timestamp": 1788461863772, "user_tz": 180, "elapsed": 3, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}} colab={"base_uri": "https://localhost:8080/", "height": 106} outputId="7b154907-c8d4-40dd-d3db-2dd53185d0d1"
+# %% colab={"base_uri": "https://localhost:8080/", "height": 106} executionInfo={"elapsed": 3, "status": "error", "timestamp": 1788461863772, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="QQ0BYLirgQLZ" outputId="7b154907-c8d4-40dd-d3db-2dd53185d0d1"
 # Nota: cómo hacer para que el resto de la TC se vea en escala de grises y no amarillo
 
 
@@ -334,7 +347,7 @@ corte237.mean()
 # %% executionInfo={"elapsed": 7, "status": "aborted", "timestamp": 1788461863898, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="vJtNVGkF44ow"
 512*512
 
-# %% id="J-_jj5ut6Ymk" executionInfo={"status": "aborted", "timestamp": 1788461863900, "user_tz": 180, "elapsed": 8, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 8, "status": "aborted", "timestamp": 1788461863900, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="J-_jj5ut6Ymk"
 imagenVisible = PIL.Image.fromarray(arrayImg[237,:,:])
 
 # %% executionInfo={"elapsed": 7, "status": "aborted", "timestamp": 1788461863901, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="JvAVk31dqjBN"
@@ -356,7 +369,7 @@ extractor = featureextractor.RadiomicsFeatureExtractor(TC_config, preCrop=True)
 # ## Configuración del Extractor de Características Radiómicas
 # Documentación: https://pyradiomics.readthedocs.io/en/latest/customization.html#radiomics-customization-label
 
-# %% id="n5qkomqy7Yin" executionInfo={"status": "aborted", "timestamp": 1788461863904, "user_tz": 180, "elapsed": 8, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 8, "status": "aborted", "timestamp": 1788461863904, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="n5qkomqy7Yin"
 extractor.settings
 
 # %% [markdown] id="fcVzGEGPX1tX"
@@ -371,10 +384,10 @@ extractor.settings
 #
 #
 
-# %% id="kbDOmYzUQbk9" executionInfo={"status": "aborted", "timestamp": 1788461863906, "user_tz": 180, "elapsed": 9, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 9, "status": "aborted", "timestamp": 1788461863906, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="kbDOmYzUQbk9"
 caracteristicas_nodulo = extractor.execute(image, segmentation, label=1)
 
-# %% id="oe95j1VkQq3m" executionInfo={"status": "aborted", "timestamp": 1788461863908, "user_tz": 180, "elapsed": 85413, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 85413, "status": "aborted", "timestamp": 1788461863908, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="oe95j1VkQq3m"
 caracteristicas_nodulo
 
 # %% [markdown] id="V-fU8ZQSaKut"
@@ -387,7 +400,7 @@ caracteristicas_nodulo
 # %% [markdown] id="yAxrX3EgaLrE"
 # ### Cantidad de Características del Nódulo
 
-# %% id="YrdBnJkdZ4xU" executionInfo={"status": "aborted", "timestamp": 1788461863911, "user_tz": 180, "elapsed": 85411, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 85411, "status": "aborted", "timestamp": 1788461863911, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="YrdBnJkdZ4xU"
 len(caracteristicas_nodulo)
 
 # %% [markdown] id="65mmRnCyYZOO"
@@ -400,7 +413,7 @@ len(caracteristicas_nodulo)
 # %% [markdown] id="fq0A2xGOlwbM"
 # ### Lectura de Características del Nódulo
 
-# %% id="Xa1PqqJoiFy7" executionInfo={"status": "aborted", "timestamp": 1788461863914, "user_tz": 180, "elapsed": 85409, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}}
+# %% executionInfo={"elapsed": 85409, "status": "aborted", "timestamp": 1788461863914, "user": {"displayName": "Karen Andreina", "userId": "15838606844898234510"}, "user_tz": 180} id="Xa1PqqJoiFy7"
 caracteristica = 'original_shape_MeshVolume'
 #caracteristica = 'original_firstorder_Minimum'
 
