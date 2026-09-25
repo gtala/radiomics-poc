@@ -13,3 +13,9 @@ ipython>=8.0
 
 # Sincronización .ipynb <-> .py (formato percent)
 jupytext>=1.16
+
+# App web MVP
+streamlit>=1.32
+pandas>=2.1
+openai>=1.40
+python-dotenv>=1.0

@@ -1,0 +1,6 @@
+[server]
+# CT NIfTI pueden acercarse a 100–200 MB
+maxUploadSize = 200
+
+[browser]
+gatherUsageStats = false

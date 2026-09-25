@@ -1,0 +1,4 @@
+# Dependencias de sistema para build de PyRadiomics / SimpleITK en Streamlit Cloud
+build-essential
+git
+cmake

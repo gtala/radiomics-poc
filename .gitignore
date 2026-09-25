@@ -32,12 +32,15 @@ data/*
 # Resultados generados
 outputs/
 results/
+jobs/
+uploads/
 *.csv
 *.xlsx
 
 # Credenciales y secretos
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 credentials.json

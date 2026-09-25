@@ -46,6 +46,52 @@ python -m ipykernel install --user --name=radiomica-poc --display-name="Python (
 
 La celda de instalación de Colab quedó comentada; las dependencias vienen de `requirements.txt`.
 
+## App web MVP (local)
+
+Mínimo andando: subir CT + máscara (o usar `data/`), ver cortes con overlay, calcular PyRadiomics, tabla + CSV. **Sin base de datos ni IA** (viene después).
+
+```bash
+cd radiomica-poc
+source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app/streamlit_app.py
+```
+
+Abrí la URL que imprime Streamlit (suele ser http://localhost:8501).
+
+Código: `app/streamlit_app.py`, `app/radiomics_service.py`, `app/viewer.py`.
+
+### Interpretación con IA (opcional)
+
+1. Copiá `.env.example` a `.env`.
+2. Poné tu `OPENAI_API_KEY` **solo en ese archivo** (no lo pegues en el chat ni lo subas a Git).
+3. `pip install openai python-dotenv` (o `pip install -r requirements.txt`).
+4. Reiniciá Streamlit.
+5. Después de **Analizar**, pulsá **Explicar resultados en criollo**.
+
+La IA solo describe números (tamaño, forma, densidades); **no diagnostica**.
+
+## Deploy en Streamlit Community Cloud (gratis)
+
+1. Asegurate de que el código esté en GitHub (`gtala/radiomics-poc`).
+2. Entrá a https://share.streamlit.io e iniciá sesión con GitHub.
+3. **New app** → repo `radiomics-poc` → branch `main`.
+4. **Main file path:** `app/streamlit_app.py`
+5. **Advanced → Secrets** (Toml), algo así:
+
+```toml
+OPENAI_API_KEY = "sk-..."
+OPENAI_MODEL = "gpt-4o-mini"
+```
+
+(Usá una key **nueva** si la anterior se filtró; no la subas al repo.)
+
+6. Deploy. El primer build puede tardar varios minutos (compila PyRadiomics).
+7. En la app **subí** CT + máscara (no hay `data/*.nii` en el cloud).
+8. App pública: no uses estudios clínicos reales.
+
+Si el build falla por memoria/deps, mirá los logs del deploy en Streamlit Cloud.
+
 ## Sincronizar `.py` y `.ipynb` (Jupytext)
 
 Tras editar el script Python:
