@@ -1,3 +1,2 @@
-# Build tools for native extensions if needed
 build-essential
 git
