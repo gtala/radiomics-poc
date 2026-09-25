@@ -63,3 +63,26 @@ Configuración: `.jupytext.toml`.
 ## Privacidad
 
 El cuaderno **recibido** incluye salidas con valores HU y matrices de píxeles de TC (datos clínicos derivados). No subas esos archivos ni datos en `data/` a repositorios públicos. La copia de trabajo en el repo va **sin salidas** ejecutadas.
+
+## Publicar en GitHub (privado)
+
+```bash
+gh auth login
+gh repo create radiomica-poc --private --source=. --remote=origin --push
+```
+
+Si el repo ya existe:
+
+```bash
+git remote add origin git@github.com:TU_USUARIO/radiomica-poc.git
+git push -u origin main
+```
+
+## Ciclo de trabajo recomendado
+
+1. **Editar** `notebooks/Radiomica_Nodulo_Pulmonar.py` en Cursor.
+2. **Sincronizar** → `jupytext --sync notebooks/Radiomica_Nodulo_Pulmonar.ipynb`
+3. **Probar** el `.ipynb` con kernel `Python (radiomica-poc)`.
+4. **Commit** → `git add notebooks/Radiomica_Nodulo_Pulmonar.py notebooks/Radiomica_Nodulo_Pulmonar.ipynb && git commit -m "..."`
+5. **Push** → `git push`
+6. **Colab** → subir o abrir desde GitHub el `.ipynb` actualizado (datos en Drive o en `data/` según entorno).
