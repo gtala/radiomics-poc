@@ -1,0 +1,53 @@
+# Entorno virtual
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Datos médicos e imágenes (no versionar)
+data/*
+!data/.gitkeep
+*.nii
+*.nii.gz
+*.mha
+*.mhd
+*.dcm
+*.dicom
+
+# Máscaras / segmentaciones
+*_label.*
+*_mask.*
+*_seg.*
+
+# Configuración local con parámetros propios (opcional)
+# CT_config.yaml en data/ queda ignorado vía data/
+
+# Resultados generados
+outputs/
+results/
+*.csv
+*.xlsx
+
+# Credenciales y secretos
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+client_secret*.json
+secrets/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Jupyter temporales
+*.nbconvert.ipynb

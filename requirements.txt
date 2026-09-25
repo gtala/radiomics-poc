@@ -1,0 +1,15 @@
+# Núcleo del cuaderno de radiómica pulmonar
+numpy>=1.26,<3
+matplotlib>=3.8
+Pillow>=10.0
+SimpleITK>=2.3
+# PyPI no publica wheel estable para Python 3.13; mismo origen que el cuaderno Colab.
+pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git
+
+# Ejecución del .ipynb en Cursor
+ipykernel>=6.29
+jupyter>=1.0
+ipython>=8.0
+
+# Sincronización .ipynb <-> .py (formato percent)
+jupytext>=1.16
