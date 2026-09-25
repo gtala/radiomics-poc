@@ -1,4 +1,4 @@
-"""Interpretación educativa de features radiómicas vía LLM (no diagnóstico)."""
+"""Interpretación académica asistida de características radiómicas (no diagnóstico)."""
 
 from __future__ import annotations
 
@@ -7,17 +7,21 @@ import os
 from typing import Any
 
 
-SYSTEM_PROMPT = """Sos un asistente que explica características radiómicas de CT de pulmón
-en español rioplatense, claro y sin jerga innecesaria.
+SYSTEM_PROMPT = """Eres un asistente académico que explica características radiómicas
+extraídas de estudios de tomografía computada (CT) y una región de interés (ROI)
+segmentada. Redactas en español formal, claro y preciso, orientado a médicos e
+investigadores en formación.
 
 REGLAS OBLIGATORIAS:
-- Esto es educativo / investigación. NO diagnostiques (no digas cáncer, benigno, maligno,
-  metástasis, ni indiques tratamiento).
-- NO des recomendaciones clínicas ni digas qué “tiene” el paciente.
-- Explicá qué miden los números (forma, densidades HU, textura) y qué se puede observar
-  en términos descriptivos (tamaño aproximado, más/menos esférico, más/menos homogéneo).
-- Si faltan datos, pedí aclaración; no inventes valores.
-- Terminá siempre con una línea: "Esto no es un informe médico ni un diagnóstico."
+- Contexto educativo / investigación. NO diagnostiques (no afirmes cáncer, benignidad,
+  malignidad, metástasis ni indiques tratamiento).
+- NO emitas recomendaciones clínicas ni concluyas sobre el estado del paciente.
+- Explica qué miden las métricas (morfología, intensidades en HU, textura) en términos
+  cuantitativos y descriptivos (tamaño relativo, esfericidad, homogeneidad, etc.).
+- Refiérete a la región analizada como ROI o lesión segmentada, sin asumir un órgano
+  específico salvo que los datos lo indiquen.
+- Si faltan datos, indícalo; no inventes valores.
+- Cierra siempre con: "Este texto es orientativo y no constituye un informe médico ni un diagnóstico."
 """
 
 
@@ -77,7 +81,7 @@ def features_for_llm(result: dict[str, Any], max_original: int = 40) -> dict[str
         "n_features_total": n_feat,
         "summary": summary,
         "sample_other_original": original,
-        "note": "Valores de PyRadiomics sobre ROI label=1 en CT pulmonar (POC).",
+        "note": "Características PyRadiomics sobre ROI (label indicado) en volumen CT.",
     }
 
 
@@ -111,15 +115,14 @@ def interpret_radiomics(
     key = _secret_or_env("OPENAI_API_KEY")
     if not key:
         raise RuntimeError(
-            "Falta OPENAI_API_KEY. En local: archivo .env (ver .env.example). "
-            "En Streamlit Cloud: App settings → Secrets."
+            "La interpretación asistida no está configurada en este entorno."
         )
 
     try:
         from openai import OpenAI
     except ImportError as exc:
         raise RuntimeError(
-            "Instalá el paquete openai: pip install openai python-dotenv"
+            "Dependencia de interpretación no disponible en el entorno."
         ) from exc
 
     payload = features_for_llm(result)
@@ -134,8 +137,9 @@ def interpret_radiomics(
             {
                 "role": "user",
                 "content": (
-                    "Explicá en criollo estos resultados radiómicos de un nódulo "
-                    "pulmonar en CT (solo descripción de números, sin diagnosticar):\n\n"
+                    "Elabore una interpretación académica de las siguientes "
+                    "características radiómicas de una ROI en CT. Describa solo "
+                    "métricas cuantitativas; no diagnostique:\n\n"
                     + json.dumps(payload, ensure_ascii=False, indent=2)
                 ),
             },
@@ -143,5 +147,5 @@ def interpret_radiomics(
     )
     text = response.choices[0].message.content
     if not text:
-        raise RuntimeError("La API no devolvió texto.")
+        raise RuntimeError("No se obtuvo respuesta del servicio de interpretación.")
     return text.strip()

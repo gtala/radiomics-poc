@@ -1,6 +1,6 @@
 """
-MVP local: subir CT + máscara, ver cortes, calcular radiómica,
-opcionalmente interpretar con IA (OPENAI_API_KEY en .env).
+Aplicación web de radiómica: visualización de volúmenes, extracción de
+características con PyRadiomics e interpretación asistida (uso académico).
 """
 
 from __future__ import annotations
@@ -38,14 +38,15 @@ from app.viewer import (  # noqa: E402
 )
 
 st.set_page_config(
-    page_title="Radiómica POC",
+    page_title="Radiómica cuantitativa",
     page_icon=None,
     layout="wide",
 )
 
 DISCLAIMER = (
-    "Herramienta educativa / investigación. No es uso clínico y no reemplaza "
-    "a un radiólogo. No diagnostica."
+    "Plataforma de apoyo a la investigación y la formación en radiómica. "
+    "No constituye un dispositivo de uso clínico, no reemplaza el criterio "
+    "médico y no emite diagnósticos."
 )
 
 
@@ -80,32 +81,35 @@ def _upload_suffix(name: str) -> str:
 
 def _session_work_dir() -> Path:
     if "work_dir" not in st.session_state:
-        st.session_state.work_dir = tempfile.mkdtemp(prefix="radiomica_mvp_")
+        st.session_state.work_dir = tempfile.mkdtemp(prefix="radiomics_job_")
     return Path(st.session_state.work_dir)
 
 
 def main() -> None:
-    st.title("Radiómica — nódulo pulmonar (MVP local)")
+    st.title("Radiómica cuantitativa")
+    st.caption(
+        "Análisis de imágenes tomográficas y regiones de interés (ROI) "
+        "mediante extracción de características radiómicas."
+    )
     st.info(DISCLAIMER)
 
     def_img, def_lab, def_cfg = project_defaults()
 
     with st.sidebar:
-        st.header("Entradas")
+        st.header("Datos de entrada")
         use_local = st.checkbox(
-            "Usar archivos de data/ del proyecto",
+            "Usar volumen de demostración local",
             value=bool(def_img and def_lab) and not st.session_state.get("uploaded_pair"),
-            help="lung_001.nii.gz + lung_001_label.nii.gz si están en data/. "
-            "Desmarcá si subís otro caso.",
+            help="Disponible solo si existen archivos de demostración en el entorno local.",
         )
-        label = st.number_input("Label de la máscara", min_value=1, value=1, step=1)
-        hu_min = st.number_input("HU min (ventana)", value=-1000.0)
-        hu_max = st.number_input("HU max (ventana)", value=-100.0)
-        flip_ud = st.checkbox("Flip vertical", value=True)
+        label = st.number_input("Etiqueta de la ROI (label)", min_value=1, value=1, step=1)
+        hu_min = st.number_input("Ventana HU — mínimo", value=-1000.0)
+        hu_max = st.number_input("Ventana HU — máximo", value=-100.0)
+        flip_ud = st.checkbox("Invertir eje vertical", value=True)
 
-        up_img = st.file_uploader("CT (.nii / .nii.gz)", type=["nii", "gz"])
-        up_lab = st.file_uploader("Máscara (.nii / .nii.gz)", type=["nii", "gz"])
-        up_cfg = st.file_uploader("Config PyRadiomics (.yaml)", type=["yaml", "yml"])
+        up_img = st.file_uploader("Volumen de imagen (.nii / .nii.gz)", type=["nii", "gz"])
+        up_lab = st.file_uploader("Máscara / segmentación (.nii / .nii.gz)", type=["nii", "gz"])
+        up_cfg = st.file_uploader("Configuración PyRadiomics (.yaml)", type=["yaml", "yml"])
 
     work = _session_work_dir()
     image_path: Path | None = None
@@ -125,7 +129,9 @@ def main() -> None:
         image_path, mask_path = def_img, def_lab
         case_id = f"local|{image_path.resolve()}|{mask_path.resolve()}"
     elif up_img is not None or up_lab is not None:
-        st.warning("Subí **los dos** archivos (CT y máscara) del mismo caso.")
+        st.warning(
+            "Cargue **ambos** archivos del mismo estudio: volumen de imagen y máscara de la ROI."
+        )
         return
 
     if up_cfg is not None:
@@ -137,15 +143,20 @@ def main() -> None:
 
     if image_path is None or mask_path is None or case_id is None:
         st.warning(
-            "Necesitás una CT y una máscara: subilas o dejá los archivos en data/."
+            "Se requiere un volumen de imagen y su máscara de segmentación "
+            "para iniciar el análisis."
         )
         return
     if config_path is None or not config_path.exists():
-        st.error("Falta CT_config.yaml (data/ o config/exampleCT.yaml).")
+        st.error(
+            "No se encontró el archivo de configuración de PyRadiomics. "
+            "Cargue un YAML o verifique la configuración del entorno."
+        )
         return
 
     st.caption(
-        f"CT: `{image_path.name}` · Máscara: `{mask_path.name}` · Config: `{config_path.name}`"
+        f"Imagen: `{image_path.name}` · Máscara: `{mask_path.name}` · "
+        f"Configuración: `{config_path.name}`"
     )
 
     vol_key = f"{case_id}|label={int(label)}"
@@ -158,7 +169,7 @@ def main() -> None:
             validate_pair(image, mask)
             img_arr, seg_arr = arrays_from_images(image, mask)
         except Exception as exc:  # noqa: BLE001
-            st.error(f"No se pudieron leer / validar los volúmenes: {exc}")
+            st.error(f"No fue posible cargar o validar los volúmenes: {exc}")
             return
         st.session_state.vol_key = vol_key
         st.session_state.case_id = case_id
@@ -171,6 +182,7 @@ def main() -> None:
             slice_with_most_mask(seg_arr, label=int(label))
         )
         st.session_state.pop("radiomics_result", None)
+        st.session_state.pop("ai_interpretation", None)
 
     img_arr = st.session_state.img_arr
     seg_arr = st.session_state.seg_arr
@@ -179,37 +191,36 @@ def main() -> None:
     config_path = Path(st.session_state.config_path)
 
     st.caption(
-        f"Volumen {img_arr.shape[::-1]} · HU CT ≈ [{float(img_arr.min()):.0f}, "
-        f"{float(img_arr.max()):.0f}] · labels máscara: "
+        f"Dimensiones {img_arr.shape[::-1]} · Intensidad (HU) ≈ "
+        f"[{float(img_arr.min()):.0f}, {float(img_arr.max()):.0f}] · "
+        f"Etiquetas en máscara: "
         f"{sorted({int(x) for x in set(np.unique(seg_arr).tolist())})}"
     )
     n_slices = int(img_arr.shape[0])
     counts, z_first, z_last = mask_slice_stats(seg_arr, label=int(label))
     default_z = slice_with_most_mask(seg_arr, label=int(label))
 
-    st.subheader("Visualizador de cortes")
+    st.subheader("Visualización multiplanar (corte axial)")
     if "slice_z" not in st.session_state:
         st.session_state.slice_z = int(default_z)
 
     if z_first >= 0:
         st.caption(
-            f"La máscara (label={int(label)}) solo aparece entre los cortes "
-            f"**z={z_first}…{z_last}**. Mejor corte: **z={default_z}** "
-            f"({int(counts[default_z])} vóxeles). En otros cortes las dos "
-            "imágenes se ven iguales (no hay nada que pintar)."
+            f"La ROI (label={int(label)}) está presente entre los cortes "
+            f"**z={z_first}…{z_last}**. Corte de máxima extensión: **z={default_z}** "
+            f"({int(counts[default_z])} vóxeles)."
         )
         solo_mask = st.checkbox(
-            "Limitar slider solo a cortes con máscara",
+            "Limitar el deslizador a cortes con ROI",
             value=False,
-            help=f"Restringe el slider a z={z_first}…{z_last}",
+            help=f"Restringe el rango a z={z_first}…{z_last}",
         )
     else:
-        st.warning(f"No hay vóxeles con label={int(label)} en esta máscara.")
+        st.warning(f"No se detectaron vóxeles con label={int(label)} en la máscara.")
         solo_mask = False
 
     z_min = int(z_first) if (solo_mask and z_first >= 0) else 0
     z_max = int(z_last) if (solo_mask and z_first >= 0) else n_slices - 1
-    # Clamp only if out of range (e.g. after toggling solo_mask), before widget
     if not (z_min <= int(st.session_state.slice_z) <= z_max):
         st.session_state.slice_z = int(min(max(st.session_state.slice_z, z_min), z_max))
 
@@ -217,12 +228,12 @@ def main() -> None:
     with c2:
         st.write("")
         st.button(
-            "Corte con más máscara",
+            "Ir al corte de máxima ROI",
             on_click=lambda: st.session_state.update(slice_z=int(default_z)),
         )
     with c1:
         z = st.slider(
-            "Corte Z",
+            "Índice de corte (Z)",
             min_value=z_min,
             max_value=z_max,
             key="slice_z",
@@ -238,18 +249,18 @@ def main() -> None:
         )
         st.pyplot(bar, clear_figure=True)
         st.caption(
-            "Barra de referencia: zona **roja** = hay máscara · línea azul = corte "
-            "actual · triángulo amarillo = corte con más máscara."
+            "Referencia: zona **roja** = cortes con ROI · línea azul = corte "
+            "actual · marcador amarillo = máxima extensión de la ROI."
         )
 
     voxels_here = int(counts[int(z)])
     if voxels_here == 0:
         st.warning(
-            f"En z={int(z)} la máscara está vacía. Probá el botón "
-            f"“Corte con más máscara” (z≈{default_z})."
+            f"En z={int(z)} la ROI está vacía. Utilice "
+            f"“Ir al corte de máxima ROI” (z≈{default_z})."
         )
     else:
-        st.success(f"En z={int(z)} hay **{voxels_here}** vóxeles de máscara.")
+        st.success(f"En z={int(z)} la ROI incluye **{voxels_here}** vóxeles.")
 
     fig = render_slice(
         img_arr,
@@ -262,33 +273,37 @@ def main() -> None:
     )
     st.pyplot(fig, clear_figure=True)
 
-    st.subheader("Análisis radiómico")
-    if st.button("Analizar con PyRadiomics", type="primary"):
-        with st.spinner("Extrayendo características…"):
+    st.subheader("Extracción de características radiómicas")
+    if st.button("Ejecutar análisis", type="primary"):
+        with st.spinner("Extrayendo características con PyRadiomics…"):
             try:
                 result = extract_features(
                     image_path, mask_path, config_path, label=int(label)
                 )
             except Exception as exc:  # noqa: BLE001
-                st.error(f"Falló la extracción: {exc}")
+                st.error(f"Error en la extracción: {exc}")
                 return
         st.session_state["radiomics_result"] = result
+        st.session_state.pop("ai_interpretation", None)
 
     result = st.session_state.get("radiomics_result")
     if not result:
-        st.caption("Pulsá Analizar para calcular features (mismo motor que el cuaderno).")
+        st.caption(
+            "Presione **Ejecutar análisis** para calcular las características "
+            "radiómicas de la ROI seleccionada."
+        )
         return
 
     summary = summary_metrics(result)
     cols = st.columns(min(4, max(1, len(summary))))
     labels = {
-        "original_shape_MeshVolume": "MeshVolume",
-        "original_shape_Maximum3DDiameter": "Diámetro máx 3D",
+        "original_shape_MeshVolume": "Volumen (malla)",
+        "original_shape_Maximum3DDiameter": "Diámetro máximo 3D",
         "original_shape_Sphericity": "Esfericidad",
-        "original_firstorder_Mean": "Mean HU",
-        "original_firstorder_Median": "Median HU",
-        "original_firstorder_Minimum": "Min HU",
-        "original_firstorder_Maximum": "Max HU",
+        "original_firstorder_Mean": "Media (HU)",
+        "original_firstorder_Median": "Mediana (HU)",
+        "original_firstorder_Minimum": "Mínimo (HU)",
+        "original_firstorder_Maximum": "Máximo (HU)",
     }
     for i, (key, val) in enumerate(summary.items()):
         with cols[i % len(cols)]:
@@ -299,16 +314,16 @@ def main() -> None:
     df = pd.DataFrame(rows)
     feat = df[df["kind"] == "feature"].copy()
     st.write(
-        f"**{len(feat)}** features numéricas"
-        f" (+ {int((df['kind'] == 'diagnostic').sum())} diagnósticos internos)."
+        f"**{len(feat)}** características cuantitativas"
+        f" ({int((df['kind'] == 'diagnostic').sum())} parámetros de control del extractor)."
     )
 
-    only_original = st.checkbox("Solo image_type = original", value=True)
+    only_original = st.checkbox("Mostrar solo imagen original (sin filtros)", value=True)
     if only_original:
         feat = feat[feat["image_type"] == "original"]
 
     classes = ["(todas)"] + sorted(feat["feature_class"].dropna().unique().tolist())
-    pick = st.selectbox("Familia", classes)
+    pick = st.selectbox("Familia de características", classes)
     if pick != "(todas)":
         feat = feat[feat["feature_class"] == pick]
 
@@ -321,30 +336,30 @@ def main() -> None:
     csv_buf = io.StringIO()
     df.to_csv(csv_buf, index=False)
     st.download_button(
-        "Descargar CSV completo",
+        "Descargar resultados (CSV)",
         data=csv_buf.getvalue(),
-        file_name="radiomics_features.csv",
+        file_name="caracteristicas_radiomicas.csv",
         mime="text/csv",
     )
 
-    st.subheader("Interpretación con IA (criollo)")
+    st.subheader("Interpretación asistida")
     st.caption(
-        "Explica los números en lenguaje simple. No diagnostica. "
-        "La API key va en `.env` (nunca en el chat ni en Git)."
+        "Resumen orientativo de las métricas cuantitativas para apoyo a la "
+        "discusión académica. No constituye informe clínico ni diagnóstico."
     )
     if not api_key_configured():
         st.warning(
-            "No hay `OPENAI_API_KEY`. Copiá `.env.example` → `.env`, pegá tu key "
-            "ahí, reiniciá Streamlit y volvé a intentar."
+            "La interpretación asistida no está disponible en este entorno. "
+            "Consulte al administrador de la plataforma."
         )
     else:
-        if st.button("Explicar resultados en criollo"):
-            with st.spinner("Consultando el modelo…"):
+        if st.button("Generar interpretación"):
+            with st.spinner("Generando interpretación…"):
                 try:
                     text = interpret_radiomics(result)
                     st.session_state["ai_interpretation"] = text
                 except Exception as exc:  # noqa: BLE001
-                    st.error(f"No se pudo interpretar: {exc}")
+                    st.error(f"No fue posible generar la interpretación: {exc}")
         if st.session_state.get("ai_interpretation"):
             st.markdown(st.session_state["ai_interpretation"])
 

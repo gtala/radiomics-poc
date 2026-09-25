@@ -1,4 +1,4 @@
-"""Extracción de features radiómicas (mismo núcleo que el cuaderno)."""
+"""Extracción de características radiómicas con PyRadiomics."""
 
 from __future__ import annotations
 
