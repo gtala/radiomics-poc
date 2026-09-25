@@ -33,9 +33,11 @@ cd radiomica-poc
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-pip install -r requirements.txt
+pip install -r requirements-local.txt
 python -m ipykernel install --user --name=radiomica-poc --display-name="Python (radiomica-poc)"
 ```
+
+En **Streamlit Community Cloud** se usa `environment.yml` (Conda + pyradiomics de conda-forge), no hace falta el venv.
 
 ## Ejecutar en Cursor
 
@@ -86,11 +88,10 @@ OPENAI_MODEL = "gpt-4o-mini"
 
 (Usá una key **nueva** si la anterior se filtró; no la subas al repo.)
 
-6. Deploy. El primer build puede tardar varios minutos (compila PyRadiomics).
-7. En la app **subí** CT + máscara (no hay `data/*.nii` en el cloud).
-8. App pública: no uses estudios clínicos reales.
-
-Si el build falla por memoria/deps, mirá los logs del deploy en Streamlit Cloud.
+6. Deploy. El primer build puede tardar (Conda + PyRadiomics).
+7. Si falló un deploy anterior: **Manage app → Reboot** o redeploy tras este fix (`environment.yml`).
+8. En la app **subí** CT + máscara (no hay `data/*.nii` en el cloud).
+9. App pública: no uses estudios clínicos reales.
 
 ## Sincronizar `.py` y `.ipynb` (Jupytext)
 
