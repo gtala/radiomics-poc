@@ -111,6 +111,9 @@ def main() -> None:
         up_lab = st.file_uploader("Máscara / segmentación (.nii / .nii.gz)", type=["nii", "gz"])
         up_cfg = st.file_uploader("Configuración PyRadiomics (.yaml)", type=["yaml", "yml"])
 
+        st.divider()
+        st.caption("© 2026 Guillermo Tala · Created by Guillermo Tala")
+
     work = _session_work_dir()
     image_path: Path | None = None
     mask_path: Path | None = None
@@ -362,6 +365,9 @@ def main() -> None:
                     st.error(f"No fue posible generar la interpretación: {exc}")
         if st.session_state.get("ai_interpretation"):
             st.markdown(st.session_state["ai_interpretation"])
+
+    st.divider()
+    st.caption("© 2026 Guillermo Tala · Created by Guillermo Tala")
 
 
 if __name__ == "__main__":
