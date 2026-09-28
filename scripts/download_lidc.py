@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import shutil
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -46,6 +47,8 @@ def select_patients(per_class: int) -> pd.DataFrame:
 
 
 COMPLETE_MARKER = ".complete"
+RETRIES = 3
+RETRY_WAIT_S = 30
 
 
 def already_downloaded(patient_dir: Path, series_uid: str) -> bool:
@@ -55,14 +58,17 @@ def already_downloaded(patient_dir: Path, series_uid: str) -> bool:
 def download_one(patient_id: str, series_uid: str) -> str:
     patient_dir = DICOM_DIR / patient_id
     series_dir = patient_dir / series_uid
-    shutil.rmtree(series_dir, ignore_errors=True)
-    patient_dir.mkdir(parents=True, exist_ok=True)
-    nbia.downloadSeries([series_uid], input_type="list", path=str(patient_dir))
-    if not series_dir.is_dir() or not any(series_dir.glob("*.dcm")):
+    for attempt in range(1, RETRIES + 1):
         shutil.rmtree(series_dir, ignore_errors=True)
-        raise RuntimeError("la serie no se descargó")
-    (series_dir / COMPLETE_MARKER).touch()
-    return patient_id
+        patient_dir.mkdir(parents=True, exist_ok=True)
+        nbia.downloadSeries([series_uid], input_type="list", path=str(patient_dir))
+        if series_dir.is_dir() and any(series_dir.glob("*.dcm")):
+            (series_dir / COMPLETE_MARKER).touch()
+            return patient_id
+        if attempt < RETRIES:
+            time.sleep(RETRY_WAIT_S * attempt)
+    shutil.rmtree(series_dir, ignore_errors=True)
+    raise RuntimeError(f"la serie no se descargó tras {RETRIES} intentos")
 
 
 def main() -> None:
