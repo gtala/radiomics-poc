@@ -92,16 +92,6 @@ def _nodule_model() -> dict:
     return load_model()
 
 
-def _readable_feature(name: str) -> str:
-    image_type, _, rest = name.partition("_")
-    family, _, feature = rest.partition("_")
-    image_type = (
-        image_type.replace("log-sigma-", "LoG σ=").replace("-0-mm-3D", " mm")
-        .replace("wavelet-", "wavelet ")
-    )
-    return f"{feature} ({family}, {image_type})"
-
-
 def render_prediction(result: dict) -> dict | None:
     st.subheader("Probabilidad estimada de malignidad")
     st.caption(
@@ -131,17 +121,42 @@ def render_prediction(result: dict) -> dict | None:
             "Categorías orientativas: bajo < 30 % · intermedio 30–70 % · alto ≥ 70 %."
         )
 
+    weights = pred.get("weighting")
+    if weights:
+        st.markdown("**Ponderación por dominio en este caso**")
+        st.caption(
+            f"Punto de partida (nódulo promedio): {weights['probabilidad_caso_promedio']}. "
+            f"El modelo combina {weights['n_features_modelo']} características; "
+            "el peso indica qué proporción de la influencia total aportó cada dominio. "
+            + weights.get("nota_tamano", "")
+        )
+        st.dataframe(
+            pd.DataFrame(weights["dominios"])[["dominio", "peso_pct", "sentido"]],
+            column_config={
+                "dominio": "Dominio",
+                "peso_pct": st.column_config.ProgressColumn(
+                    "Peso", format="%d %%", min_value=0, max_value=100
+                ),
+                "sentido": "Sentido",
+            },
+            use_container_width=True,
+            hide_index=True,
+        )
+
     if pred["contributions"]:
         contrib = pd.DataFrame(pred["contributions"])
-        contrib["Característica"] = contrib["feature"].map(_readable_feature)
         contrib["Efecto"] = contrib["contribution"].map(
-            lambda v: "aumenta" if v > 0 else "disminuye"
+            lambda v: "↑ malignidad" if v > 0 else "↓ malignidad"
         )
-        st.markdown("**Características que más influyeron en este caso**")
+        st.markdown("**Características que más influyeron**")
         st.dataframe(
-            contrib[["Característica", "Efecto", "contribution"]].rename(
-                columns={"contribution": "Aporte (logit)"}
-            ),
+            contrib[["nombre_legible", "dominio", "valor_caso", "comparacion", "Efecto"]],
+            column_config={
+                "nombre_legible": "Característica",
+                "dominio": "Dominio",
+                "valor_caso": st.column_config.NumberColumn("Valor", format="%.3g"),
+                "comparacion": "Respecto de nódulos de referencia",
+            },
             use_container_width=True,
             hide_index=True,
         )

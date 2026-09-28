@@ -134,10 +134,12 @@ def interpret_radiomics(
     payload = features_for_llm(result)
     if prediction:
         system_prompt = NODULE_REPORT_PROMPT
+        payload = {"resumen_caso": payload["summary"]}
         payload["modelo_probabilidad"] = {
             "probabilidad_texto": prediction.get("probability_text"),
             "categoria": prediction.get("risk_band"),
-            "probabilidad_malignidad": round(prediction["probability"], 3),
+            "orientacion": prediction.get("orientation"),
+            "ponderacion": prediction.get("weighting"),
             "densidad_categoria": prediction.get("density"),
             "features_mas_influyentes": prediction["contributions"],
             "descriptores_clave": prediction.get("descriptors", []),
@@ -145,8 +147,8 @@ def interpret_radiomics(
             "metricas_validacion": prediction["metrics"],
         }
         instruction = (
-            "Elabore el informe académico del siguiente nódulo pulmonar según la "
-            "estructura indicada:\n\n"
+            "Redacte el informe del siguiente nódulo pulmonar según la estructura "
+            "indicada:\n\n"
         )
     else:
         system_prompt = SYSTEM_PROMPT

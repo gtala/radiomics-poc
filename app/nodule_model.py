@@ -92,6 +92,36 @@ def discordant_factors(prob: float, descriptors: list[dict], contribs: list[dict
     return out
 
 
+FAMILY_DOMAIN = {
+    "shape": "Tamaño y forma",
+    "firstorder": "Densidad e intensidad",
+    "glcm": "Textura",
+    "glszm": "Textura",
+    "glrlm": "Textura",
+    "gldm": "Textura",
+    "ngtdm": "Textura",
+}
+
+
+def feature_domain(name: str) -> str:
+    family = name.split("_")[1] if name.count("_") >= 2 else ""
+    return FAMILY_DOMAIN.get(family, "Otras")
+
+
+def readable_feature(name: str) -> str:
+    image_type, _, rest = name.partition("_")
+    family, _, feature = rest.partition("_")
+    image_type = (
+        image_type.replace("log-sigma-", "LoG σ=").replace("-0-mm-3D", " mm")
+        .replace("wavelet-", "wavelet ").replace("original", "imagen original")
+    )
+    return f"{feature} ({family}, {image_type})"
+
+
+def _sigmoid(v: float) -> float:
+    return float(1 / (1 + np.exp(-v)))
+
+
 def probability_text(prob: float) -> str:
     return "> 99 %" if prob > 0.99 else "< 1 %" if prob < 0.01 else f"{prob:.0%}".replace("%", " %")
 
@@ -133,15 +163,74 @@ def predict_malignancy(result: dict[str, Any], bundle: dict[str, Any] | None = N
         if f in result
     ]
     mean_hu = result.get("original_firstorder_Mean")
+    band = risk_band(prob)
     return {
         "probability": prob,
         "probability_text": probability_text(prob),
-        "risk_band": risk_band(prob),
+        "risk_band": band,
+        "orientation": {
+            "bajo": "hallazgos compatibles con nódulo de probable naturaleza benigna",
+            "intermedio": "hallazgos indeterminados; el modelo no discrimina con claridad",
+            "alto": "hallazgos compatibles con nódulo de probable naturaleza maligna",
+        }[band],
+        "weighting": weighting(bundle, x),
         "density": density_category(float(mean_hu)) if mean_hu is not None else None,
         "contributions": contribs,
         "descriptors": descriptors,
         "discordant": discordant_factors(prob, descriptors, contribs),
         "metrics": bundle.get("metrics", {}),
+    }
+
+
+def weighting(bundle: dict[str, Any], x: pd.DataFrame) -> dict[str, Any] | None:
+    """Cómo se compone la probabilidad: punto de partida + aporte neto de cada dominio."""
+    pipe = bundle["pipeline"]
+    clf = pipe[-1]
+    if not hasattr(clf, "coef_"):
+        return None
+    z = pipe[:-1].transform(x)[0]
+    names = pipe[:-1].get_feature_names_out(bundle["feature_names"])
+    contrib = z * clf.coef_[0]
+    intercept = float(clf.intercept_[0])
+    total_abs = float(np.abs(contrib).sum()) or 1.0
+
+    domains: dict[str, dict[str, float]] = {}
+    for name, c in zip(names, contrib):
+        if c == 0:
+            continue
+        d = domains.setdefault(feature_domain(str(name)), {"neto": 0.0, "abs": 0.0, "n": 0})
+        d["neto"] += float(c)
+        d["abs"] += abs(float(c))
+        d["n"] += 1
+
+    rows = sorted(
+        (
+            {
+                "dominio": dom,
+                "peso_pct": round(100 * v["abs"] / total_abs),
+                "aporte_neto_logit": round(v["neto"], 2),
+                "sentido": "hacia malignidad" if v["neto"] > 0 else "hacia benignidad",
+                "n_features": int(v["n"]),
+            }
+            for dom, v in domains.items()
+        ),
+        key=lambda r: -r["peso_pct"],
+    )
+    return {
+        "probabilidad_caso_promedio": probability_text(_sigmoid(intercept)),
+        "n_features_modelo": int((clf.coef_[0] != 0).sum()),
+        "dominios": rows,
+        "explicacion": (
+            "El modelo parte de la probabilidad de un nódulo con valores promedio y suma el "
+            "aporte de cada característica (regresión logística). peso_pct es la proporción "
+            "de la influencia total que corresponde a cada dominio en este caso."
+        ),
+        "nota_tamano": (
+            "El modelo conservó una sola variable de forma porque varias características de "
+            "textura e intensidad están fuertemente correlacionadas con el tamaño del nódulo "
+            "(correlación 0,6–0,8 con el diámetro en el entrenamiento); el tamaño influye "
+            "indirectamente a través de ellas."
+        ),
     }
 
 
@@ -165,6 +254,8 @@ def contributions(bundle: dict[str, Any], x: pd.DataFrame, top: int = 8) -> list
         rows.append(
             {
                 "feature": name,
+                "nombre_legible": readable_feature(name),
+                "dominio": feature_domain(name),
                 "contribution": float(contrib[i]),
                 "efecto": "aumenta la probabilidad" if contrib[i] > 0 else "disminuye la probabilidad",
                 "valor_caso": value,
