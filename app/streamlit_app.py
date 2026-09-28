@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
 load_dotenv(ROOT / ".env")
 
 from app.interpret import api_key_configured, interpret_radiomics  # noqa: E402
+from app.nodule_model import load_model, model_available, predict_malignancy  # noqa: E402
 from app.radiomics_service import (  # noqa: E402
     extract_features,
     features_to_rows,
@@ -77,6 +78,84 @@ def _upload_suffix(name: str) -> str:
     if lower.endswith(".nii"):
         return ".nii"
     return Path(name).suffix or ".nii.gz"
+
+
+RISK_BANDS = [
+    (0.30, "Bajo", "green"),
+    (0.70, "Intermedio", "orange"),
+    (1.01, "Alto", "red"),
+]
+
+
+@st.cache_resource
+def _nodule_model() -> dict:
+    return load_model()
+
+
+def _readable_feature(name: str) -> str:
+    image_type, _, rest = name.partition("_")
+    family, _, feature = rest.partition("_")
+    image_type = (
+        image_type.replace("log-sigma-", "LoG σ=").replace("-0-mm-3D", " mm")
+        .replace("wavelet-", "wavelet ")
+    )
+    return f"{feature} ({family}, {image_type})"
+
+
+def render_prediction(result: dict) -> dict | None:
+    st.subheader("Probabilidad estimada de malignidad")
+    st.caption(
+        "Modelo entrenado con nódulos pulmonares de CT de tórax (LIDC-IDRI). "
+        "Solo aplica cuando la ROI es un nódulo pulmonar."
+    )
+    if not model_available():
+        st.info("El modelo de probabilidad no está disponible en este entorno.")
+        return None
+    bundle = _nodule_model()
+    try:
+        pred = predict_malignancy(result, bundle)
+    except ValueError as exc:
+        st.warning(str(exc))
+        return None
+
+    prob = pred["probability"]
+    band, color = next((b, c) for limit, b, c in RISK_BANDS if prob < limit)
+    c1, c2 = st.columns([1, 2])
+    shown = "> 99 %" if prob > 0.99 else "< 1 %" if prob < 0.01 else f"{prob:.0%}"
+    with c1:
+        st.metric("Probabilidad estimada", shown)
+        st.markdown(f"Categoría: **:{color}[{band}]**")
+    with c2:
+        st.progress(prob)
+        st.caption(
+            "Categorías orientativas: bajo < 30 % · intermedio 30–70 % · alto ≥ 70 %."
+        )
+
+    if pred["contributions"]:
+        contrib = pd.DataFrame(pred["contributions"])
+        contrib["Característica"] = contrib["feature"].map(_readable_feature)
+        contrib["Efecto"] = contrib["contribution"].map(
+            lambda v: "aumenta" if v > 0 else "disminuye"
+        )
+        st.markdown("**Características que más influyeron en este caso**")
+        st.dataframe(
+            contrib[["Característica", "Efecto", "contribution"]].rename(
+                columns={"contribution": "Aporte (logit)"}
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    m = bundle.get("metrics", {})
+    st.caption(
+        f"Modelo: {bundle.get('model_name', '—')} · {bundle.get('n_train_nodules', '—')} nódulos de "
+        f"{bundle.get('n_train_patients', '—')} pacientes · validación cruzada por paciente: "
+        f"AUC {m.get('auc_cv', 0):.2f}, sensibilidad {m.get('sensibilidad_cv', 0):.2f}, "
+        f"especificidad {m.get('especificidad_cv', 0):.2f}. "
+        "Etiqueta de referencia: opinión de radiólogos, no anatomía patológica. "
+        "Estimación académica; no constituye diagnóstico."
+    )
+    return pred
 
 
 def _session_work_dir() -> Path:
@@ -345,6 +424,8 @@ def main() -> None:
         mime="text/csv",
     )
 
+    prediction = render_prediction(result)
+
     st.subheader("Interpretación asistida")
     st.caption(
         "Resumen orientativo de las métricas cuantitativas para apoyo a la "
@@ -359,7 +440,7 @@ def main() -> None:
         if st.button("Generar interpretación"):
             with st.spinner("Generando interpretación…"):
                 try:
-                    text = interpret_radiomics(result)
+                    text = interpret_radiomics(result, prediction=prediction)
                     st.session_state["ai_interpretation"] = text
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"No fue posible generar la interpretación: {exc}")

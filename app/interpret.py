@@ -106,6 +106,7 @@ def api_key_configured() -> bool:
 def interpret_radiomics(
     result: dict[str, Any],
     *,
+    prediction: dict[str, Any] | None = None,
     model: str | None = None,
 ) -> str:
     """
@@ -126,6 +127,16 @@ def interpret_radiomics(
         ) from exc
 
     payload = features_for_llm(result)
+    if prediction:
+        payload["modelo_probabilidad"] = {
+            "probabilidad_malignidad": round(prediction["probability"], 3),
+            "features_mas_influyentes": prediction["contributions"],
+            "metricas_validacion": prediction["metrics"],
+            "nota": (
+                "Modelo académico entrenado con LIDC-IDRI (etiqueta: opinión de radiólogos). "
+                "Explicar la probabilidad como estimación orientativa, nunca como diagnóstico."
+            ),
+        }
     client = OpenAI(api_key=key)
     used_model = model or _secret_or_env("OPENAI_MODEL", "gpt-4o-mini")
 
