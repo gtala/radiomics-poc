@@ -73,11 +73,11 @@ def save_upload(upload, dest: Path) -> Path:
 
 def _upload_suffix(name: str) -> str:
     lower = name.lower()
-    if lower.endswith(".nii.gz"):
+    if lower.endswith(".gz"):
         return ".nii.gz"
     if lower.endswith(".nii"):
         return ".nii"
-    return Path(name).suffix or ".nii.gz"
+    return ".nii.gz"
 
 
 RISK_BANDS = [
