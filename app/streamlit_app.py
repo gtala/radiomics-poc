@@ -426,19 +426,29 @@ def main() -> None:
 
     prediction = render_prediction(result)
 
-    st.subheader("Interpretación asistida")
-    st.caption(
-        "Resumen orientativo de las métricas cuantitativas para apoyo a la "
-        "discusión académica. No constituye informe clínico ni diagnóstico."
-    )
+    if prediction:
+        st.subheader("Informe asistido")
+        st.caption(
+            "Explica los fundamentos de la probabilidad estimada: hallazgos cuantitativos, "
+            "características determinantes, factores discordantes, impresión orientativa y "
+            "sugerencias para el profesional. De uso académico; no constituye diagnóstico."
+        )
+        button_label = "Generar informe"
+    else:
+        st.subheader("Interpretación asistida")
+        st.caption(
+            "Resumen orientativo de las métricas cuantitativas para apoyo a la "
+            "discusión académica. No constituye informe clínico ni diagnóstico."
+        )
+        button_label = "Generar interpretación"
     if not api_key_configured():
         st.warning(
             "La interpretación asistida no está disponible en este entorno. "
             "Consulte al administrador de la plataforma."
         )
     else:
-        if st.button("Generar interpretación"):
-            with st.spinner("Generando interpretación…"):
+        if st.button(button_label):
+            with st.spinner("Generando…"):
                 try:
                     text = interpret_radiomics(result, prediction=prediction)
                     st.session_state["ai_interpretation"] = text

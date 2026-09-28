@@ -51,6 +51,31 @@ META = [
 ]
 SIZE_FEATURE = "original_shape_Maximum3DDiameter"
 INTERPRETABLE_MARGIN = 0.01
+KEY_DESCRIPTORS = [
+    "original_shape_Maximum3DDiameter",
+    "original_shape_MeshVolume",
+    "original_shape_Sphericity",
+    "original_shape_Elongation",
+    "original_shape_SurfaceVolumeRatio",
+    "original_firstorder_Mean",
+    "original_firstorder_Entropy",
+    "original_glcm_Idm",
+]
+
+
+def reference_stats(X: pd.DataFrame, labels: pd.Series, features: list[str]) -> dict:
+    """Mediana y rango intercuartil por clase, para explicar cada caso."""
+    stats = {}
+    for f in dict.fromkeys(features):
+        stats[f] = {
+            label: {
+                "mediana": float(X.loc[labels == label, f].median()),
+                "p25": float(X.loc[labels == label, f].quantile(0.25)),
+                "p75": float(X.loc[labels == label, f].quantile(0.75)),
+            }
+            for label in ("benigno", "maligno")
+        }
+    return stats
 
 
 def candidates() -> dict[str, tuple[Pipeline, dict]]:
@@ -174,6 +199,8 @@ def main() -> None:
             "auc_base_diametro": float(base_test["auc"]),
             "hiperparametros": search.best_params_,
         },
+        "reference_stats": reference_stats(X, df["label"], list(weights.index) + KEY_DESCRIPTORS),
+        "key_descriptors": KEY_DESCRIPTORS,
         "n_train_nodules": int(len(y)),
         "n_train_patients": int(len(set(groups))),
         "pyradiomics_version": radiomics.__version__,
