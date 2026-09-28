@@ -6,7 +6,7 @@ Estructura de salida (la que espera pylidc):
     data/lidc/<patient_id>/<SeriesInstanceUID>/*.dcm
 
 Uso:
-    python -m scripts.download_lidc --per-class 60
+    python -m scripts.download_lidc --per-class 60 --parallel 6
     python -m scripts.download_lidc --per-class 1   # prueba rápida
 """
 
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
@@ -44,14 +45,30 @@ def select_patients(per_class: int) -> pd.DataFrame:
     return pd.concat(picked)[["patient_id", "series_uid", "group"]].sort_values("patient_id")
 
 
+COMPLETE_MARKER = ".complete"
+
+
 def already_downloaded(patient_dir: Path, series_uid: str) -> bool:
+    return (patient_dir / series_uid / COMPLETE_MARKER).exists()
+
+
+def download_one(patient_id: str, series_uid: str) -> str:
+    patient_dir = DICOM_DIR / patient_id
     series_dir = patient_dir / series_uid
-    return series_dir.is_dir() and any(series_dir.iterdir())
+    shutil.rmtree(series_dir, ignore_errors=True)
+    patient_dir.mkdir(parents=True, exist_ok=True)
+    nbia.downloadSeries([series_uid], input_type="list", path=str(patient_dir))
+    if not series_dir.is_dir() or not any(series_dir.glob("*.dcm")):
+        shutil.rmtree(series_dir, ignore_errors=True)
+        raise RuntimeError("la serie no se descargó")
+    (series_dir / COMPLETE_MARKER).touch()
+    return patient_id
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--per-class", type=int, default=60)
+    parser.add_argument("--parallel", type=int, default=6)
     args = parser.parse_args()
 
     sel = select_patients(args.per_class)
@@ -59,18 +76,22 @@ def main() -> None:
     sel.to_csv(SELECTION, index=False)
     print(f"Seleccionados: {len(sel)} pacientes ({sel['group'].value_counts().to_dict()})")
 
-    for i, row in enumerate(sel.itertuples(), 1):
-        patient_dir = DICOM_DIR / row.patient_id
-        if already_downloaded(patient_dir, row.series_uid):
-            print(f"[{i}/{len(sel)}] {row.patient_id} ya descargado")
-            continue
-        patient_dir.mkdir(parents=True, exist_ok=True)
-        print(f"[{i}/{len(sel)}] {row.patient_id} descargando…", flush=True)
-        try:
-            nbia.downloadSeries([row.series_uid], input_type="list", path=str(patient_dir))
-        except Exception as exc:  # noqa: BLE001
-            print(f"   error: {exc}")
-            shutil.rmtree(patient_dir / row.series_uid, ignore_errors=True)
+    pending = [
+        r for r in sel.itertuples()
+        if not already_downloaded(DICOM_DIR / r.patient_id, r.series_uid)
+    ]
+    print(f"Pendientes: {len(pending)} · descargas en paralelo: {args.parallel}", flush=True)
+
+    with ThreadPoolExecutor(max_workers=args.parallel) as pool:
+        futures = {
+            pool.submit(download_one, r.patient_id, r.series_uid): r.patient_id
+            for r in pending
+        }
+        for i, fut in enumerate(as_completed(futures), 1):
+            try:
+                print(f"[{i}/{len(futures)}] {fut.result()} listo", flush=True)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[{i}/{len(futures)}] {futures[fut]} error: {exc}", flush=True)
 
     total = sum(f.stat().st_size for f in DICOM_DIR.rglob("*") if f.is_file())
     print(f"Listo. Tamaño en disco: {total / 1e9:.1f} GB en {DICOM_DIR.relative_to(ROOT)}")

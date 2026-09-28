@@ -98,7 +98,7 @@ def main() -> None:
     catalog = pd.read_csv(CATALOG)
     selection = pd.read_csv(SELECTION)
     nodules = catalog[catalog["eligible"] & catalog["series_uid"].isin(selection["series_uid"])]
-    downloaded = {p.name for p in (ROOT / "data" / "lidc").iterdir() if p.is_dir()}
+    downloaded = {p.parent.parent.name for p in (ROOT / "data" / "lidc").glob("*/*/.complete")}
     nodules = nodules[nodules["patient_id"].isin(downloaded)]
 
     PARTIAL_DIR.mkdir(parents=True, exist_ok=True)
