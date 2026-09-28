@@ -54,3 +54,6 @@ secrets/
 
 # Jupyter temporales
 *.nbconvert.ipynb
+
+# Notas internas de contexto (solo local)
+.cursor/rules/contexto-proyecto.mdc
