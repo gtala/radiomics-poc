@@ -25,10 +25,10 @@ app: CT nueva + máscara ──► features ──► modelo.joblib ──► pr
 
 ## Etapa 1 — Datos
 
-- [ ] Dataset: **LIDC-IDRI** en [TCIA](https://www.cancerimagingarchive.net/collection/lidc-idri/). ~1.000 CT de tórax, nódulos segmentados por hasta 4 radiólogos, puntaje de malignidad 1–5. Licencia CC BY 3.0.
-- [ ] Descargar un subconjunto de **100–150 pacientes** (~10–20 GB; el total pesa ~124 GB) con [NBIA Data Retriever](https://wiki.cancerimagingarchive.net/display/NBIA/Downloading+TCIA+Images) o el paquete `tcia_utils`.
-- [ ] Instalar y configurar `pylidc` (lee las anotaciones XML y arma las máscaras).
-- [ ] Verificar: cantidad de pacientes, nódulos y distribución de puntajes.
+- [x] Dataset: **LIDC-IDRI** en [TCIA](https://www.cancerimagingarchive.net/collection/lidc-idri/). ~1.000 CT de tórax, nódulos segmentados por hasta 4 radiólogos, puntaje de malignidad 1–5. Licencia CC BY 3.0.
+- [x] Descargar un subconjunto de **100–150 pacientes** con `tcia_utils` → `scripts/download_lidc.py` (paralelo, con reintentos). **114 pacientes** descargados (6 fallaron por cortes del servidor y se dejaron afuera).
+- [x] Instalar y configurar `pylidc` → `scripts/lidc_compat.py` resuelve incompatibilidades con Python/NumPy actuales.
+- [x] Verificar → `scripts/lidc_catalog.py`: 817 nódulos elegibles en todo LIDC-IDRI (494 benignos, 323 malignos).
 
 ## Etapa 2 — Criterios (provisorios, a validar con Plaza)
 
@@ -41,19 +41,18 @@ app: CT nueva + máscara ──► features ──► modelo.joblib ──► pr
 
 ## Etapa 3 — Extracción en lote
 
-- [ ] `scripts/extract_lidc.py`: por cada nódulo, genera volumen + máscara y corre PyRadiomics (reutiliza `app/radiomics_service.py`).
-- [ ] Salida: `outputs/features.parquet` (una fila por nódulo: id de paciente, id de nódulo, etiqueta, features).
-- [ ] Guardar la configuración YAML y la versión de PyRadiomics usadas (reproducibilidad, IBSI).
+- [x] `scripts/extract_lidc.py`: por cada nódulo, genera volumen + máscara de consenso y corre PyRadiomics con la misma configuración que la app.
+- [x] Salida: `outputs/features.parquet` → **194 nódulos** (119 benignos, 75 malignos), 1.218 features, sin errores.
+- [x] Versiones de PyRadiomics y scikit-learn guardadas dentro del modelo.
 
 ## Etapa 4 — Entrenamiento y validación
 
-- [ ] `scripts/train.py`.
-- [ ] Separación **por paciente** (nunca el mismo paciente en entrenamiento y prueba).
-- [ ] Selección de features: eliminar las muy correlacionadas (|r| > 0,9) y seleccionar con LASSO → objetivo 10–30 features.
-- [ ] Modelos: regresión logística (interpretable) y random forest; comparar.
-- [ ] Validación cruzada estratificada por paciente + conjunto de prueba reservado.
-- [ ] Métricas: AUC, sensibilidad, especificidad, curva ROC, **calibración**.
-- [ ] Salida: `models/modelo.joblib` + `reports/validacion.md` con gráficos.
+- [x] `scripts/train.py`.
+- [x] Separación **por paciente**: validación cruzada anidada 5×5 agrupada por paciente.
+- [x] Selección de features: correlación |r| > 0,9 + LASSO → 45 features en el modelo final.
+- [x] Modelos: regresión logística (elegida por interpretable) y random forest; empatan.
+- [x] Métricas: AUC 0,96, sensibilidad 0,96, especificidad 0,94 · solo diámetro: AUC 0,94, sensibilidad 0,80.
+- [x] Salida: `models/modelo_nodulo.joblib` + `reports/validacion.md` con gráficos.
 
 ## Etapa 5 — Probabilidad en la app
 
@@ -77,6 +76,16 @@ Hoy la máscara se hace a mano en 3D Slicer. Opciones a evaluar:
 - [ ] **Versión Colab** del circuito completo para que Plaza pueda usarlo sin instalar nada.
 - [ ] **Modo RM** (T1, T2, difusión) con ventanas y configuración PyRadiomics propias.
 - [ ] **Base de datos** (cuando la app guarde historial o feedback): Postgres en Supabase o Neon (plan gratis). Las imágenes nunca van en la base.
+
+## Etapa 8 — Modelo híbrido (inspirado en productos como [Optellum](https://optellum.com/ai-technology))
+
+El estado del arte combina deep learning + radiómica + datos clínicos. Pasos posibles, de más fácil a más difícil:
+
+- [ ] **Datos clínicos:** edad, tabaquismo, antecedentes oncológicos (como el modelo de Brock). LIDC-IDRI casi no los trae → aplica con datos propios.
+- [ ] **Features de deep learning preentrenado:** sumar embeddings de un modelo ya entrenado, por ejemplo el *Foundation Model for Cancer Imaging Biomarkers* (FMCIB, Nature Machine Intelligence 2024), preentrenado con más de 11.000 lesiones de CT. Funciona con pocos casos.
+- [ ] **Segmentación con redes convolucionales** (ver Etapa 6).
+- [ ] **Presentación al médico:** puntaje de riesgo en escala, integrado al flujo del nódulo, en lugar de una probabilidad cruda.
+- No entrenar una red convolucional propia desde cero mientras haya pocos cientos de casos.
 
 ## Reglas
 
