@@ -23,6 +23,13 @@ load_dotenv(ROOT / ".env")
 
 from app.interpret import api_key_configured, interpret_radiomics  # noqa: E402
 from app.nodule_model import load_model, model_available, predict_malignancy  # noqa: E402
+from app.profile_view import (  # noqa: E402
+    highlights,
+    load_reference,
+    profile_chart,
+    profile_frame,
+    reference_available,
+)
 from app.radiomics_service import (  # noqa: E402
     extract_features,
     features_to_rows,
@@ -90,6 +97,32 @@ RISK_BANDS = [
 @st.cache_resource
 def _nodule_model() -> dict:
     return load_model()
+
+
+def render_profile(result: dict) -> None:
+    if not reference_available():
+        st.info("La población de referencia no está disponible en este entorno.")
+        return
+    reference = load_reference()
+    frame = profile_frame(result, reference)
+    if frame.empty:
+        st.info("No hay características comparables con la población de referencia.")
+        return
+    st.caption(
+        f"Cada punto ubica al caso respecto de {reference['n']} nódulos pulmonares de "
+        "referencia (LIDC-IDRI): percentil 0 = el valor más bajo, 100 = el más alto. "
+        "Color del punto: azul = bajo, blanco = típico, rojo = alto. "
+        "Barras: rango típico (percentiles 25–75) de nódulos "
+        ":green[**benignos**] (arriba) y :red[**malignos**] (abajo)."
+    )
+    notes = highlights(frame)
+    if notes:
+        st.markdown("**Lectura rápida**\n\n" + "\n".join(f"- {n}" for n in notes))
+    st.altair_chart(profile_chart(frame), use_container_width=True)
+    st.caption(
+        "La comparación solo es válida si la ROI es un nódulo pulmonar en CT de tórax. "
+        "Uso académico; no constituye diagnóstico."
+    )
 
 
 def render_prediction(result: dict) -> dict | None:
@@ -415,20 +448,24 @@ def main() -> None:
         f" ({int((df['kind'] == 'diagnostic').sum())} parámetros de control del extractor)."
     )
 
-    only_original = st.checkbox("Mostrar solo imagen original (sin filtros)", value=True)
-    if only_original:
-        feat = feat[feat["image_type"] == "original"]
+    tab_table, tab_profile = st.tabs(["Tabla de características", "Perfil visual (beta)"])
+    with tab_table:
+        only_original = st.checkbox("Mostrar solo imagen original (sin filtros)", value=True)
+        if only_original:
+            feat = feat[feat["image_type"] == "original"]
 
-    classes = ["(todas)"] + sorted(feat["feature_class"].dropna().unique().tolist())
-    pick = st.selectbox("Familia de características", classes)
-    if pick != "(todas)":
-        feat = feat[feat["feature_class"] == pick]
+        classes = ["(todas)"] + sorted(feat["feature_class"].dropna().unique().tolist())
+        pick = st.selectbox("Familia de características", classes)
+        if pick != "(todas)":
+            feat = feat[feat["feature_class"] == pick]
 
-    st.dataframe(
-        feat[["feature_class", "name", "key", "value"]],
-        use_container_width=True,
-        hide_index=True,
-    )
+        st.dataframe(
+            feat[["feature_class", "name", "key", "value"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+    with tab_profile:
+        render_profile(result)
 
     csv_buf = io.StringIO()
     df.to_csv(csv_buf, index=False)
