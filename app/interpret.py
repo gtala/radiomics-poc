@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any
+
+NODULE_REPORT_PROMPT = (Path(__file__).parent / "prompts" / "informe_nodulo.md").read_text(
+    encoding="utf-8"
+)
 
 
 SYSTEM_PROMPT = """Eres un asistente académico que explica características radiómicas
@@ -106,6 +111,7 @@ def api_key_configured() -> bool:
 def interpret_radiomics(
     result: dict[str, Any],
     *,
+    prediction: dict[str, Any] | None = None,
     model: str | None = None,
 ) -> str:
     """
@@ -126,22 +132,45 @@ def interpret_radiomics(
         ) from exc
 
     payload = features_for_llm(result)
+    if prediction:
+        system_prompt = NODULE_REPORT_PROMPT
+        payload = {"resumen_caso": payload["summary"]}
+        payload["modelo_probabilidad"] = {
+            "probabilidad_texto": prediction.get("probability_text"),
+            "categoria": prediction.get("risk_band"),
+            "orientacion": prediction.get("orientation"),
+            "ponderacion": prediction.get("weighting"),
+            "densidad_categoria": prediction.get("density"),
+            "features_mas_influyentes": prediction["contributions"],
+            "descriptores_clave": prediction.get("descriptors", []),
+            "factores_discordantes": prediction.get("discordant", []),
+            "metricas_validacion": prediction["metrics"],
+        }
+        instruction = (
+            "Redacte el informe del siguiente nódulo pulmonar según la estructura "
+            "indicada:\n\n"
+        )
+    else:
+        system_prompt = SYSTEM_PROMPT
+        instruction = (
+            "Elabore una interpretación académica de las siguientes "
+            "características radiómicas de una ROI en CT. Describa solo "
+            "métricas cuantitativas; no diagnostique:\n\n"
+        )
     client = OpenAI(api_key=key)
-    used_model = model or _secret_or_env("OPENAI_MODEL", "gpt-4o-mini")
+    if prediction:
+        used_model = model or _secret_or_env("OPENAI_REPORT_MODEL", "gpt-4o")
+    else:
+        used_model = model or _secret_or_env("OPENAI_MODEL", "gpt-4o-mini")
 
     response = client.chat.completions.create(
         model=used_model,
-        temperature=0.3,
+        temperature=0.2,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {
                 "role": "user",
-                "content": (
-                    "Elabore una interpretación académica de las siguientes "
-                    "características radiómicas de una ROI en CT. Describa solo "
-                    "métricas cuantitativas; no diagnostique:\n\n"
-                    + json.dumps(payload, ensure_ascii=False, indent=2)
-                ),
+                "content": instruction + json.dumps(payload, ensure_ascii=False, indent=2),
             },
         ],
     )

@@ -1,0 +1,12 @@
+-r requirements-local.txt
+
+# Descarga y anotaciones de LIDC-IDRI
+pylidc==0.2.3
+tcia_utils>=3.3
+setuptools<81
+
+# Entrenamiento
+pandas>=2.2
+pyarrow>=15
+scikit-learn>=1.5
+joblib>=1.4

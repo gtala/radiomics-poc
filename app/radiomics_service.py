@@ -20,19 +20,28 @@ def validate_pair(image: sitk.Image, mask: sitk.Image) -> None:
         )
 
 
+def extract_features_from_images(
+    image: sitk.Image,
+    mask: sitk.Image,
+    config_path: str | Path,
+    label: int = 1,
+) -> dict[str, Any]:
+    validate_pair(image, mask)
+    extractor = featureextractor.RadiomicsFeatureExtractor(
+        str(config_path), preCrop=True
+    )
+    return dict(extractor.execute(image, mask, label=label))
+
+
 def extract_features(
     image_path: str | Path,
     mask_path: str | Path,
     config_path: str | Path,
     label: int = 1,
 ) -> dict[str, Any]:
-    image = load_image(image_path)
-    mask = load_image(mask_path)
-    validate_pair(image, mask)
-    extractor = featureextractor.RadiomicsFeatureExtractor(
-        str(config_path), preCrop=True
+    return extract_features_from_images(
+        load_image(image_path), load_image(mask_path), config_path, label=label
     )
-    return dict(extractor.execute(image, mask, label=label))
 
 
 def features_to_rows(result: dict[str, Any]) -> list[dict[str, Any]]:

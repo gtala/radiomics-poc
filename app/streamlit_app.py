@@ -22,6 +22,14 @@ if str(ROOT) not in sys.path:
 load_dotenv(ROOT / ".env")
 
 from app.interpret import api_key_configured, interpret_radiomics  # noqa: E402
+from app.nodule_model import load_model, model_available, predict_malignancy  # noqa: E402
+from app.profile_view import (  # noqa: E402
+    highlights,
+    load_reference,
+    profile_chart,
+    profile_frame,
+    reference_available,
+)
 from app.radiomics_service import (  # noqa: E402
     extract_features,
     features_to_rows,
@@ -83,6 +91,125 @@ def _upload_suffix(name: str) -> str:
     if lower.endswith(".nii"):
         return ".nii"
     return ".nii.gz"
+
+
+RISK_BANDS = [
+    (0.30, "Bajo", "green"),
+    (0.70, "Intermedio", "orange"),
+    (1.01, "Alto", "red"),
+]
+
+
+@st.cache_resource
+def _nodule_model() -> dict:
+    return load_model()
+
+
+def render_profile(result: dict) -> None:
+    if not reference_available():
+        st.info("La población de referencia no está disponible en este entorno.")
+        return
+    reference = load_reference()
+    frame = profile_frame(result, reference)
+    if frame.empty:
+        st.info("No hay características comparables con la población de referencia.")
+        return
+    st.caption(
+        f"Cada punto ubica al caso respecto de {reference['n']} nódulos pulmonares de "
+        "referencia (LIDC-IDRI): percentil 0 = el valor más bajo, 100 = el más alto. "
+        "Color del punto: azul = bajo, blanco = típico, rojo = alto. "
+        "Barras: rango típico (percentiles 25–75) de nódulos "
+        ":green[**benignos**] (arriba) y :red[**malignos**] (abajo)."
+    )
+    notes = highlights(frame)
+    if notes:
+        st.markdown("**Lectura rápida**\n\n" + "\n".join(f"- {n}" for n in notes))
+    st.altair_chart(profile_chart(frame), use_container_width=True)
+    st.caption(
+        "La comparación solo es válida si la ROI es un nódulo pulmonar en CT de tórax. "
+        "Uso académico; no constituye diagnóstico."
+    )
+
+
+def render_prediction(result: dict) -> dict | None:
+    st.subheader("Probabilidad estimada de malignidad")
+    st.caption(
+        "Modelo entrenado con nódulos pulmonares de CT de tórax (LIDC-IDRI). "
+        "Solo aplica cuando la ROI es un nódulo pulmonar."
+    )
+    if not model_available():
+        st.info("El modelo de probabilidad no está disponible en este entorno.")
+        return None
+    bundle = _nodule_model()
+    try:
+        pred = predict_malignancy(result, bundle)
+    except ValueError as exc:
+        st.warning(str(exc))
+        return None
+
+    prob = pred["probability"]
+    band, color = next((b, c) for limit, b, c in RISK_BANDS if prob < limit)
+    c1, c2 = st.columns([1, 2])
+    shown = "> 99 %" if prob > 0.99 else "< 1 %" if prob < 0.01 else f"{prob:.0%}"
+    with c1:
+        st.metric("Probabilidad estimada", shown)
+        st.markdown(f"Categoría: **:{color}[{band}]**")
+    with c2:
+        st.progress(prob)
+        st.caption(
+            "Categorías orientativas: bajo < 30 % · intermedio 30–70 % · alto ≥ 70 %."
+        )
+
+    weights = pred.get("weighting")
+    if weights:
+        st.markdown("**Ponderación por dominio en este caso**")
+        st.caption(
+            f"Punto de partida (nódulo promedio): {weights['probabilidad_caso_promedio']}. "
+            f"El modelo combina {weights['n_features_modelo']} características; "
+            "el peso indica qué proporción de la influencia total aportó cada dominio. "
+            + weights.get("nota_tamano", "")
+        )
+        st.dataframe(
+            pd.DataFrame(weights["dominios"])[["dominio", "peso_pct", "sentido"]],
+            column_config={
+                "dominio": "Dominio",
+                "peso_pct": st.column_config.ProgressColumn(
+                    "Peso", format="%d %%", min_value=0, max_value=100
+                ),
+                "sentido": "Sentido",
+            },
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    if pred["contributions"]:
+        contrib = pd.DataFrame(pred["contributions"])
+        contrib["Efecto"] = contrib["contribution"].map(
+            lambda v: "↑ malignidad" if v > 0 else "↓ malignidad"
+        )
+        st.markdown("**Características que más influyeron**")
+        st.dataframe(
+            contrib[["nombre_legible", "dominio", "valor_caso", "comparacion", "Efecto"]],
+            column_config={
+                "nombre_legible": "Característica",
+                "dominio": "Dominio",
+                "valor_caso": st.column_config.NumberColumn("Valor", format="%.3g"),
+                "comparacion": "Respecto de nódulos de referencia",
+            },
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    m = bundle.get("metrics", {})
+    st.caption(
+        f"Modelo: {bundle.get('model_name', '—')} · {bundle.get('n_train_nodules', '—')} nódulos de "
+        f"{bundle.get('n_train_patients', '—')} pacientes · validación cruzada por paciente: "
+        f"AUC {m.get('auc_cv', 0):.2f}, sensibilidad {m.get('sensibilidad_cv', 0):.2f}, "
+        f"especificidad {m.get('especificidad_cv', 0):.2f}. "
+        "Etiqueta de referencia: opinión de radiólogos, no anatomía patológica. "
+        "Estimación académica; no constituye diagnóstico."
+    )
+    return pred
 
 
 def _session_work_dir() -> Path:
@@ -368,20 +495,24 @@ def main() -> None:
         f" ({int((df['kind'] == 'diagnostic').sum())} parámetros de control del extractor)."
     )
 
-    only_original = st.checkbox("Mostrar solo imagen original (sin filtros)", value=True)
-    if only_original:
-        feat = feat[feat["image_type"] == "original"]
+    tab_table, tab_profile = st.tabs(["Tabla de características", "Perfil visual (beta)"])
+    with tab_table:
+        only_original = st.checkbox("Mostrar solo imagen original (sin filtros)", value=True)
+        if only_original:
+            feat = feat[feat["image_type"] == "original"]
 
-    classes = ["(todas)"] + sorted(feat["feature_class"].dropna().unique().tolist())
-    pick = st.selectbox("Familia de características", classes)
-    if pick != "(todas)":
-        feat = feat[feat["feature_class"] == pick]
+        classes = ["(todas)"] + sorted(feat["feature_class"].dropna().unique().tolist())
+        pick = st.selectbox("Familia de características", classes)
+        if pick != "(todas)":
+            feat = feat[feat["feature_class"] == pick]
 
-    st.dataframe(
-        feat[["feature_class", "name", "key", "value"]],
-        use_container_width=True,
-        hide_index=True,
-    )
+        st.dataframe(
+            feat[["feature_class", "name", "key", "value"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+    with tab_profile:
+        render_profile(result)
 
     csv_buf = io.StringIO()
     df.to_csv(csv_buf, index=False)
@@ -392,21 +523,33 @@ def main() -> None:
         mime="text/csv",
     )
 
-    st.subheader("Interpretación asistida")
-    st.caption(
-        "Resumen orientativo de las métricas cuantitativas para apoyo a la "
-        "discusión académica. No constituye informe clínico ni diagnóstico."
-    )
+    prediction = render_prediction(result)
+
+    if prediction:
+        st.subheader("Informe asistido")
+        st.caption(
+            "Explica los fundamentos de la probabilidad estimada: hallazgos cuantitativos, "
+            "características determinantes, factores discordantes, impresión orientativa y "
+            "sugerencias para el profesional. De uso académico; no constituye diagnóstico."
+        )
+        button_label = "Generar informe"
+    else:
+        st.subheader("Interpretación asistida")
+        st.caption(
+            "Resumen orientativo de las métricas cuantitativas para apoyo a la "
+            "discusión académica. No constituye informe clínico ni diagnóstico."
+        )
+        button_label = "Generar interpretación"
     if not api_key_configured():
         st.warning(
             "La interpretación asistida no está disponible en este entorno. "
             "Consulte al administrador de la plataforma."
         )
     else:
-        if st.button("Generar interpretación"):
-            with st.spinner("Generando interpretación…"):
+        if st.button(button_label):
+            with st.spinner("Generando…"):
                 try:
-                    text = interpret_radiomics(result)
+                    text = interpret_radiomics(result, prediction=prediction)
                     st.session_state["ai_interpretation"] = text
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"No fue posible generar la interpretación: {exc}")
