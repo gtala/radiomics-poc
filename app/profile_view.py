@@ -90,6 +90,40 @@ def profile_frame(result: dict[str, Any], reference: dict[str, Any]) -> pd.DataF
     return pd.DataFrame(rows)
 
 
+def report_findings(result: dict[str, Any], reference: dict[str, Any]) -> list[dict[str, Any]]:
+    """Comparación de cada característica con los valores típicos de benignos y malignos."""
+    frame = profile_frame(result, reference)
+    out = []
+    for r in frame.sort_values("orden").itertuples():
+        ref = reference["features"][PROFILE_FEATURES[r.orden][0]]
+        lo, hi = ref["todos"][0], ref["todos"][-1]
+        d_b, d_m = abs(r.percentil - r.benigno_p50), abs(r.percentil - r.maligno_p50)
+        if abs(d_b - d_m) < 10:
+            parecido = "similar a ambos grupos"
+        else:
+            parecido = "más parecido a benignos" if d_b < d_m else "más parecido a malignos"
+        fuera = None
+        if r.valor > hi:
+            fuera = f"mayor que todos los nódulos de referencia (máximo {hi:.4g})"
+        elif r.valor < lo:
+            fuera = f"menor que todos los nódulos de referencia (mínimo {lo:.4g})"
+        out.append(
+            {
+                "caracteristica": r.caracteristica,
+                "dominio": r.dominio,
+                "valor_caso": round(r.valor, 4),
+                "mediana_benignos": round(ref["benigno"][1], 4),
+                "mediana_malignos": round(ref["maligno"][1], 4),
+                "percentil": r.percentil,
+                "comparacion": parecido,
+                "fuera_de_rango": fuera,
+                "valor_alto_indica": r.alto_significa,
+                "valor_bajo_indica": r.bajo_significa,
+            }
+        )
+    return out
+
+
 def highlights(frame: pd.DataFrame, low: float = 10, high: float = 90) -> list[str]:
     """Frases de lectura rápida para los valores extremos."""
     out = []

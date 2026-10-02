@@ -528,9 +528,9 @@ def main() -> None:
     if prediction:
         st.subheader("Informe asistido")
         st.caption(
-            "Explica los fundamentos de la probabilidad estimada: hallazgos cuantitativos, "
-            "características determinantes, factores discordantes, impresión orientativa y "
-            "sugerencias para el profesional. De uso académico; no constituye diagnóstico."
+            "Informe breve en estilo radiológico: qué hallazgos se apartan de lo esperable, "
+            "comparados con nódulos benignos y malignos de referencia, y por qué el modelo "
+            "estimó esa probabilidad. De uso académico; no constituye diagnóstico."
         )
         button_label = "Generar informe"
     else:

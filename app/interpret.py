@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from app.profile_view import load_reference, reference_available, report_findings
+
 NODULE_REPORT_PROMPT = (Path(__file__).parent / "prompts" / "informe_nodulo.md").read_text(
     encoding="utf-8"
 )
@@ -134,21 +136,25 @@ def interpret_radiomics(
     payload = features_for_llm(result)
     if prediction:
         system_prompt = NODULE_REPORT_PROMPT
-        payload = {"resumen_caso": payload["summary"]}
-        payload["modelo_probabilidad"] = {
-            "probabilidad_texto": prediction.get("probability_text"),
+        weighting = prediction.get("weighting") or {}
+        payload = {
+            "probabilidad": prediction.get("probability_text"),
             "categoria": prediction.get("risk_band"),
             "orientacion": prediction.get("orientation"),
-            "ponderacion": prediction.get("weighting"),
             "densidad_categoria": prediction.get("density"),
-            "features_mas_influyentes": prediction["contributions"],
-            "descriptores_clave": prediction.get("descriptors", []),
-            "factores_discordantes": prediction.get("discordant", []),
-            "metricas_validacion": prediction["metrics"],
+            "hallazgos": report_findings(result, load_reference()) if reference_available() else [],
+            "peso_por_dominio": [
+                {k: d[k] for k in ("dominio", "peso_pct", "sentido")}
+                for d in weighting.get("dominios", [])
+            ],
+            "nota_tamano": weighting.get("nota_tamano"),
+            "caracteristicas_que_mas_pesaron": [
+                {k: c.get(k) for k in ("nombre_legible", "dominio", "efecto", "comparacion")}
+                for c in prediction["contributions"][:5]
+            ],
         }
         instruction = (
-            "Redacte el informe del siguiente nódulo pulmonar según la estructura "
-            "indicada:\n\n"
+            "Redacte el informe del siguiente nódulo pulmonar:\n\n"
         )
     else:
         system_prompt = SYSTEM_PROMPT
