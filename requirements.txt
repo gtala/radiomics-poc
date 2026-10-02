@@ -8,6 +8,7 @@ openai>=1.40
 python-dotenv>=1.0
 PyWavelets>=1.4
 pykwalify>=1.8
+PyYAML>=6.0
 scikit-learn==1.9.1
 joblib>=1.4
 pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git

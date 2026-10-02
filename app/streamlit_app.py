@@ -33,9 +33,15 @@ from app.profile_view import (  # noqa: E402
 from app.radiomics_service import (  # noqa: E402
     extract_features,
     features_to_rows,
-    load_image,
     summary_metrics,
-    validate_pair,
+)
+from app.validation import (  # noqa: E402
+    InputError,
+    check_case,
+    check_config,
+    check_extension,
+    check_not_same_file,
+    read_volume,
 )
 from app.viewer import (  # noqa: E402
     arrays_from_images,
@@ -229,14 +235,32 @@ def main() -> None:
             value=bool(def_img and def_lab) and not st.session_state.get("uploaded_pair"),
             help="Disponible solo si existen archivos de demostración en el entorno local.",
         )
-        label = st.number_input("Etiqueta de la ROI (label)", min_value=1, value=1, step=1)
+        up_img = st.file_uploader("Volumen de imagen (.nii / .nii.gz)", type=["nii", "gz"])
+        up_lab = st.file_uploader("Máscara / segmentación (.nii / .nii.gz)", type=["nii", "gz"])
+
+        st.subheader("Visualización")
         hu_min = st.number_input("Ventana HU — mínimo", value=-1000.0)
         hu_max = st.number_input("Ventana HU — máximo", value=-100.0)
         flip_ud = st.checkbox("Invertir eje vertical", value=True)
 
-        up_img = st.file_uploader("Volumen de imagen (.nii / .nii.gz)", type=["nii", "gz"])
-        up_lab = st.file_uploader("Máscara / segmentación (.nii / .nii.gz)", type=["nii", "gz"])
-        up_cfg = st.file_uploader("Configuración PyRadiomics (.yaml)", type=["yaml", "yml"])
+        with st.expander("Opciones avanzadas"):
+            st.caption(
+                "No es necesario modificar nada: por defecto se analiza la etiqueta 1 de la "
+                "máscara con la configuración estándar para TC."
+            )
+            label = st.number_input(
+                "Etiqueta de la ROI (label)",
+                min_value=1,
+                value=1,
+                step=1,
+                help="Valor de la máscara que identifica la región a analizar.",
+            )
+            up_cfg = st.file_uploader(
+                "Configuración PyRadiomics propia (.yaml)",
+                type=["yaml", "yml"],
+                help="Opcional. Reemplaza la configuración estándar (filtros, discretización, "
+                "familias de características). El modelo de probabilidad requiere la estándar.",
+            )
 
         st.divider()
         st.caption("© 2026 Guillermo Tala · Created by Guillermo Tala")
@@ -248,6 +272,14 @@ def main() -> None:
     case_id: str | None = None
 
     if up_img is not None and up_lab is not None:
+        try:
+            check_extension(up_img.name, "imagen")
+            check_extension(up_lab.name, "máscara")
+            if up_img.size == up_lab.size:
+                check_not_same_file(up_img.getvalue(), up_lab.getvalue(), up_img.name, up_lab.name)
+        except InputError as exc:
+            st.error(str(exc))
+            return
         st.session_state["uploaded_pair"] = True
         case_id = f"upload|{up_img.name}:{up_img.size}|{up_lab.name}:{up_lab.size}"
         image_path = work / f"ct{_upload_suffix(up_img.name)}"
@@ -270,6 +302,11 @@ def main() -> None:
         if st.session_state.get("cfg_id") != cfg_id:
             save_upload(up_cfg, config_path)
             st.session_state.cfg_id = cfg_id
+        try:
+            check_config(config_path, up_cfg.name)
+        except InputError as exc:
+            st.error(str(exc))
+            return
 
     if image_path is None or mask_path is None or case_id is None:
         st.warning(
@@ -284,22 +321,29 @@ def main() -> None:
         )
         return
 
-    st.caption(
-        f"Imagen: `{image_path.name}` · Máscara: `{mask_path.name}` · "
-        f"Configuración: `{config_path.name}`"
-    )
+    img_name = up_img.name if up_img is not None else image_path.name
+    mask_name = up_lab.name if up_lab is not None else mask_path.name
+    cfg_name = up_cfg.name if up_cfg is not None else "estándar para TC"
+    st.caption(f"Imagen: `{img_name}` · Máscara: `{mask_name}` · Configuración: {cfg_name}")
 
-    vol_key = f"{case_id}|label={int(label)}"
+    vol_key = f"{case_id}|label={int(label)}|cfg={config_path}"
     case_changed = st.session_state.get("vol_key") != vol_key
 
     if case_changed or "img_arr" not in st.session_state:
         try:
-            image = load_image(image_path)
-            mask = load_image(mask_path)
-            validate_pair(image, mask)
+            image = read_volume(image_path, "imagen", img_name)
+            mask = read_volume(mask_path, "máscara", mask_name)
+            st.session_state.input_warnings = check_case(
+                image, mask, int(label), names=(img_name, mask_name)
+            )
             img_arr, seg_arr = arrays_from_images(image, mask)
+        except InputError as exc:
+            st.error(str(exc))
+            st.session_state.pop("vol_key", None)
+            return
         except Exception as exc:  # noqa: BLE001
-            st.error(f"No fue posible cargar o validar los volúmenes: {exc}")
+            st.error(f"No fue posible cargar los volúmenes: {exc}")
+            st.session_state.pop("vol_key", None)
             return
         st.session_state.vol_key = vol_key
         st.session_state.case_id = case_id
@@ -313,6 +357,9 @@ def main() -> None:
         )
         st.session_state.pop("radiomics_result", None)
         st.session_state.pop("ai_interpretation", None)
+
+    for warning in st.session_state.get("input_warnings", []):
+        st.warning(warning)
 
     img_arr = st.session_state.img_arr
     seg_arr = st.session_state.seg_arr
